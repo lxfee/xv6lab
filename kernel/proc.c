@@ -207,6 +207,20 @@ uchar initcode[] = {
   0x00, 0x00, 0x00, 0x00
 };
 
+
+uint64
+procnum(void) {
+  int num = 0;
+  struct proc *p;
+
+  for(p = proc; p < &proc[NPROC]; p++) {
+    if(p->state == UNUSED) continue;
+    num++;
+  }
+  return num;
+}
+
+
 // Set up first user process.
 void
 userinit(void)
@@ -220,6 +234,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  p->tracemask = 0;
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -276,6 +291,8 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
+
+  np->tracemask = p->tracemask;
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
