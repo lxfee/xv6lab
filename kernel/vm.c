@@ -289,6 +289,32 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+void
+vmprint(pagetable_t pagetable) 
+{
+  if(!pagetable) return ;
+  printf("page table %p\n", pagetable);
+  for(int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) == 0) continue;
+    uint64 child = PTE2PA(pte);
+    printf("..%d: pte %p pa %p\n", i, pte, child);
+    for(int j = 0; j < 512; j++) {
+      pte_t pte1 = ((pagetable_t)child)[j];
+      if((pte1 & PTE_V) == 0) continue;
+      uint64 child1 = PTE2PA(pte1);
+      printf(".. ..%d: pte %p pa %p\n", j, pte1, child1);
+      for(int k = 0; k < 512; k++) {
+        pte_t pte2 = ((pagetable_t)child1)[k];
+        if((pte2 & PTE_V) == 0) continue;
+        uint64 child2 = PTE2PA(pte2);
+        printf(".. .. ..%d: pte %p pa %p\n", k, pte2, child2);
+      }
+    }
+  }
+}
+
+
 // Free user memory pages,
 // then free page-table pages.
 void
