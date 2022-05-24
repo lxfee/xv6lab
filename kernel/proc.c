@@ -107,13 +107,14 @@ found:
     panic("allocproc: setupkvm");
   }
   uint64 va = KSTACK((int) (0));
-  uint64 pa = p->kstack;
+  uint64 pa = 0;
+  pa = (uint64) kalloc();
   if(pa == 0) {
-    pa = (uint64) kalloc();
-    if(pa == 0)
-      panic("allocproc: kalloc");
-    p->kstack = pa;
+    freeproc(p);
+    release(&p->lock);
+    return 0;
   }
+  p->kstack = pa;
   kvmmap(p->kpagetable, va, pa, PGSIZE, PTE_R | PTE_W);
   
   // An empty user page table.
@@ -159,8 +160,13 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->kpagetable) 
+  if(p->kpagetable) {
+    if(p->kstack) {
+      kfree((void*) p->kstack);
+      p->kstack = 0;
+    }
     proc_freekpagetable(p->kpagetable);
+  }
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -272,7 +278,6 @@ growproc(int n)
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
-  printf("sbrk: %p %p\n", p->sz, sz);
   u2kvmclone(p->pagetable, p->kpagetable, p->sz, sz);
   p->sz = sz;
   return 0;

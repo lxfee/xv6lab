@@ -40,7 +40,7 @@ setupkvm()
   kvmmap(kpagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
   // CLINT
-  kvmmap(kpagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  // kvmmap(kpagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
   // PLIC
   kvmmap(kpagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
@@ -133,6 +133,7 @@ u2kvmclone(pagetable_t fromp, pagetable_t top, uint64 oldsz, uint64 newsz)
     for(uint64 a = oldsz; a < newsz; a += PGSIZE) {
       pte_t* pte = walk(fromp, a, 0);
       if(pte) {
+        // 注意 & (~PTE_U), 不然会出现权限错误 scause 0x000000000000000d
         if(mappages(top, a, PGSIZE, PTE2PA(*pte), PTE_FLAGS(*pte) & (~PTE_U)) < 0) {
           panic("u2kvmclone: mappages");
         }

@@ -1,1 +1,3 @@
-I don't know, ha ha ha.
+1. page 0 包含代码（PTE_X：可执行）；page 2包含栈；page 1 不能在用户模式下访问，因为它PTE_U被设为0，它是守护页
+2. 防止溢出
+
