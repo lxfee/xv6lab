@@ -115,7 +115,7 @@ found:
     p->kstack = pa;
   }
   kvmmap(p->kpagetable, va, pa, PGSIZE, PTE_R | PTE_W);
-
+  
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -123,8 +123,6 @@ found:
     release(&p->lock);
     return 0;
   }
-
-  
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -146,8 +144,7 @@ proc_freekpagetable(pagetable_t pagetable) {
       proc_freekpagetable((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
-      kfree((void*)pagetable);
-      return ;
+      break;
     }
   }
   kfree((void*)pagetable);
@@ -245,6 +242,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  u2kvmclone(p->pagetable, p->kpagetable, 0, p->sz);
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -274,6 +272,8 @@ growproc(int n)
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
+  printf("sbrk: %p %p\n", p->sz, sz);
+  u2kvmclone(p->pagetable, p->kpagetable, p->sz, sz);
   p->sz = sz;
   return 0;
 }
@@ -299,7 +299,7 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  u2kvmclone(np->pagetable, np->kpagetable, 0, np->sz);
   np->parent = p;
 
   // copy saved user registers.
