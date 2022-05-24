@@ -6,7 +6,6 @@ lazy
 lock
 mmap
 net
-pgtbl
 riscv
 thread
 traps
@@ -14,3 +13,5 @@ traps
 ### 已完成
 util
 syscall
+pgtbl
+
