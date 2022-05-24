@@ -11,6 +11,7 @@ struct cpu cpus[NCPU];
 struct proc proc[NPROC];
 
 struct proc *initproc;
+extern pagetable_t kernel_pagetable;
 
 int nextpid = 1;
 struct spinlock pid_lock;
@@ -38,7 +39,7 @@ procinit(void)
       if(pa == 0)
         panic("kalloc");
       uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      kvmmap(kernel_pagetable ,va, (uint64)pa, PGSIZE, PTE_R | PTE_W);      
       p->kstack = va;
   }
   kvminithart();
@@ -106,12 +107,25 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
-
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
     return 0;
   }
+  // An empty kernel page table.
+  p->kpagetable = setupkvm();
+  if(p->kpagetable == 0) {
+    panic("allocproc: setupkvm");
+  }
+
+  // Allocate a page for the process's kernel stack.
+  // Map it high in memory, followed by an invalid
+  // guard page.
+  uint64 va = KSTACK((int) (p - proc));
+  uint64 pa = walkkaddr(kernel_pagetable, va);
+  if(pa == 0)
+    panic("allocproc: walkaddr");
+  kvmmap(p->kpagetable, va, pa, PGSIZE, PTE_R | PTE_W);
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -130,6 +144,24 @@ found:
   return p;
 }
 
+void
+proc_freekpagetable(pagetable_t pagetable) {
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      proc_freekpagetable((pagetable_t)child);
+      pagetable[i] = 0;
+    } else if(pte & PTE_V){
+      kfree((void*)pagetable);
+      return ;
+    }
+  }
+  kfree((void*)pagetable);
+}
+
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
@@ -139,6 +171,8 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  if(p->kpagetable) 
+    proc_freekpagetable(p->kpagetable);
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -473,8 +507,11 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
         swtch(&c->context, &p->context);
 
+        kvminithart();
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
