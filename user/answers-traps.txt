@@ -1,0 +1,18 @@
+1. 
+a1~a7存放参数。13存放在a2中
+
+2. 
+运行结果被编译器直接优化出来了。从f函数（32行）可以看到，g被内联成了addiw	a0,a0,3
+从24，26行为prinf设置参数，f(8)+1=12直接被算出为12传入参数，并没有执行函数调用。
+
+3.
+0000000000000630是printf的地址，riscv使用（见50行）
+auipc rd, immediate //x[rd] = pc + sext(immediate[31:12] << 12)
+左移12位，然后
+jalr rd, offset(rs1) // t =pc+4; pc=(x[rs1]+sext(offset))&~1; x[rd]=t
+auipc给jalr的立即数腾地方（jalr的立即数只有12位）。方便转跳指令
+https://zhuanlan.zhihu.com/p/354654279
+
+4.
+ra存放的是执行printf后下一条指令地址：0x38
+
