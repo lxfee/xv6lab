@@ -8,10 +8,10 @@ mmap
 net
 riscv
 thread
-traps
 
 ### 已完成
 util
 syscall
 pgtbl
+traps
 
