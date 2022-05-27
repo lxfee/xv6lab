@@ -2,7 +2,6 @@
 ### 未完成
 cow
 fs
-lazy
 lock
 mmap
 net
@@ -14,4 +13,4 @@ util
 syscall
 pgtbl
 traps
-
+lazy
