@@ -111,6 +111,20 @@ walkaddr(pagetable_t pagetable, uint64 va)
   return pa;
 }
 
+uint64
+walkflag(pagetable_t pagetable, uint64 va){
+  pte_t *pte;
+  if(va >= MAXVA)
+    return 0;
+
+  pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  return PTE_FLAGS(*pte);
+}
+
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
@@ -367,8 +381,11 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+    if(pa0 == 0) {
+      pa0 = dealpagefault(va0);
+      if(pa0 == 0)
+        return -1;
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -392,8 +409,11 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+    if(pa0 == 0) {
+      pa0 = dealpagefault(srcva);
+      if(pa0 == 0)
+        return -1;
+    }
     n = PGSIZE - (srcva - va0);
     if(n > len)
       n = len;
@@ -419,8 +439,11 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   while(got_null == 0 && max > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+    if(pa0 == 0) {
+      pa0 = dealpagefault(va0);
+      if(pa0 == 0)
+        return -1;
+    }
     n = PGSIZE - (srcva - va0);
     if(n > max)
       n = max;
@@ -446,5 +469,30 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+
+void
+vmprint(pagetable_t pagetable) 
+{
+  if(!pagetable) return ;
+  printf("page table %p\n", pagetable);
+  for(int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) == 0) continue;
+    uint64 child = PTE2PA(pte);
+    printf("..%d: pte %p pa %p\n", i, pte, child);
+    for(int j = 0; j < 512; j++) {
+      pte_t pte1 = ((pagetable_t)child)[j];
+      if((pte1 & PTE_V) == 0) continue;
+      uint64 child1 = PTE2PA(pte1);
+      printf(".. ..%d: pte %p pa %p\n", j, pte1, child1);
+      for(int k = 0; k < 512; k++) {
+        pte_t pte2 = ((pagetable_t)child1)[k];
+        if((pte2 & PTE_V) == 0) continue;
+        uint64 child2 = PTE2PA(pte2);
+        printf(".. .. ..%d: pte %p pa %p\n", k, pte2, child2);
+      }
+    }
   }
 }

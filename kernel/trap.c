@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 
+
 struct spinlock tickslock;
 uint ticks;
 
@@ -70,19 +71,8 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else if(scause == 13 || scause == 15) {
-    uint64 a = r_stval();
-    if(a > p->sz) {
+    if(dealpagefault(r_stval()) == 0) {
       p->killed = 1;
-    } else {
-      a = PGROUNDDOWN(a);
-      char *mem;
-      mem = kalloc();
-      if(mem == 0 || mappages(p->pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0) {
-        p->killed = 1;
-      } else {
-        memset(mem, 0, PGSIZE);
-        p->trapframe->epc -= 4;
-      }
     }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -98,6 +88,27 @@ usertrap(void)
     yield();
 
   usertrapret();
+}
+
+uint64
+dealpagefault(uint64 va) {
+  char *mem = 0;
+  struct proc *p = myproc();
+  if(va >= p->sz) {
+  } else {
+    uint64 a = PGROUNDDOWN(va);
+    uint64 flags = walkflag(p->pagetable, a);
+    if((flags & PTE_V) && (flags & PTE_U) == 0) return 0; 
+    mem = kalloc();
+    if(mem == 0) {
+    } else {
+      memset(mem, 0, PGSIZE);
+      if(mappages(p->pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0) {
+        kfree(mem);
+      }
+    }
+  }
+  return (uint64) mem;
 }
 
 //
