@@ -15,7 +15,6 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
-extern int pacount[];
 
 
 /*
@@ -89,6 +88,21 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     }
   }
   return &pagetable[PX(0, va)];
+}
+
+
+uint64
+walkflag(pagetable_t pagetable, uint64 va){
+  pte_t *pte;
+  if(va >= MAXVA)
+    return 0;
+
+  pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  return PTE_FLAGS(*pte);
 }
 
 // Look up a virtual address, return the physical address,
@@ -326,16 +340,17 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     // if((mem = kalloc()) == 0)
     //   goto err;
     // memmove(mem, (char*)pa, PGSIZE);
+    increment((void *) pa);
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       // kfree(mem);
       goto err;
     }
     *pte &= (~PTE_W);
-    pacount[pa >> 12]++;
   }
   return 0;
 
  err:
+  printf("wrong");
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
@@ -359,11 +374,15 @@ uvmclear(pagetable_t pagetable, uint64 va)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
-  uint64 n, va0, pa0;
-
+  uint64 n, va0, pa0, flag;
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    flag = walkflag(pagetable, va0);
+    if((flag & PTE_W) == 0) {
+      pa0 = dealpagefault(va0);
+    } else {
+      pa0 = walkaddr(pagetable, va0);
+    }
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
