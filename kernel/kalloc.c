@@ -52,10 +52,10 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
-  if(pacount[(uint64)pa >> 12]) {
+  if(pacount[(uint64)pa >> 12] == 0) {
     // Fill with junk to catch dangling refs.
     memset(pa, 1, PGSIZE);
-  
+    
     r = (struct run*)pa;
   
     acquire(&kmem.lock);

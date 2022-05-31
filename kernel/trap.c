@@ -10,7 +10,7 @@ struct spinlock tickslock;
 uint ticks;
 
 extern char trampoline[], uservec[], userret[];
-
+extern int pacount[];
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
@@ -86,6 +86,34 @@ usertrap(void)
     yield();
 
   usertrapret();
+}
+
+uint64
+dealpagefault(uint64 va) {
+  char *mem = 0;
+  struct proc *p = myproc();
+  if(va >= p->sz) {
+  } else {
+    uint64 a = PGROUNDDOWN(va);
+    uint64 pa = walkaddr(p->pagetable, a);
+    
+    if(pa == 0) return 0; 
+    mem = kalloc();
+    if(mem == 0) {
+    } else {
+      memmove(mem, (char*)pa, PGSIZE);
+      uvmunmap(p->pagetable, a, PGSIZE, 1);
+      if(mappages(p->pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0) {
+        kfree(mem);
+      }
+      if(pacount[pa >> 12] == 0) {
+        kfree((void *)pa);
+      } else {
+        pacount[pa >> 12]--;
+      }
+    }
+  }
+  return (uint64) mem;
 }
 
 //
