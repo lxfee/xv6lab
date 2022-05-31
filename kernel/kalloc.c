@@ -23,6 +23,8 @@ struct {
   struct run *freelist;
 } kmem;
 
+int pacount[PHYSTOP >> 12];
+
 void
 kinit()
 {
@@ -50,16 +52,19 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
-
-  // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
-
-  r = (struct run*)pa;
-
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+  if(pacount[(uint64)pa >> 12]) {
+    // Fill with junk to catch dangling refs.
+    memset(pa, 1, PGSIZE);
+  
+    r = (struct run*)pa;
+  
+    acquire(&kmem.lock);
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    release(&kmem.lock);
+  } else {
+    pacount[(uint64)pa >> 12]--;
+  }
 }
 
 // Allocate one 4096-byte page of physical memory.
