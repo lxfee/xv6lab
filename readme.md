@@ -12,7 +12,6 @@ net
 
 riscv
 
-thread
 
 ### 已完成
 
@@ -27,3 +26,5 @@ traps
 lazy
 
 cow
+
+thread
