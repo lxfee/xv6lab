@@ -43,10 +43,11 @@ main()
       ;
     __sync_synchronize();
     printf("hart %d starting\n", cpuid());
+    initkmem();
     kvminithart();    // turn on paging
     trapinithart();   // install kernel trap vector
     plicinithart();   // ask PLIC for device interrupts
   }
-
+  
   scheduler();        
 }

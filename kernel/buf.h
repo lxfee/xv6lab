@@ -1,12 +1,26 @@
+
+struct bucketnode {
+  struct bucketnode *next;
+  struct bucketnode *prev;
+  struct buf *buf;
+};
+
+struct buckethead {
+  struct spinlock lock;
+  struct bucketnode head;
+};
+
 struct buf {
   int valid;   // has data been read from disk?
   int disk;    // does disk "own" buf?
   uint dev;
   uint blockno;
-  struct sleeplock lock;
+  uint timestamp;
   uint refcnt;
-  struct buf *prev; // LRU cache list
-  struct buf *next;
+  struct bucketnode bnode; 
+  struct sleeplock lock;
   uchar data[BSIZE];
 };
+
+
 
