@@ -24,27 +24,28 @@
 #include "buf.h"
 
 struct {
+  struct spinlock lock;
   struct buf buf[NBUF];
   struct buckethead buckets[BUCKETSSIZE];
 } bcache;
 
+static inline uint idx(uint blockno) {
+  return blockno % BUCKETSSIZE;
+}
 
-// must hold bucket lock
 static void erase(struct buf* b) {
   struct bucketnode *bnode = &b->bnode;
   bnode->prev->next = bnode->next;
   bnode->next->prev = bnode->prev;
 }
 
-// must hold bucket lock, except init
 static void insert(struct buf* b) {
-  uint key = b->blockno % BUCKETSSIZE;
-  struct buckethead *bhead = &bcache.buckets[key];
+  struct bucketnode *bhead = &bcache.buckets[idx(b->blockno)].head;
   struct bucketnode *bnode = &b->bnode;
-  bnode->next = bhead->head.next;
-  bnode->next->prev = bnode;
-  bnode->prev = &bhead->head;
-  bhead->head.next = bnode;
+  bnode->next = bhead->next;
+  bnode->prev = bhead;
+  bhead->next->prev = bnode;
+  bhead->next = bnode;
 }
 
 
@@ -54,7 +55,8 @@ binit(void)
   struct buf *b;
   struct buckethead *bhead;
 
-  for(bhead = &bcache.buckets[0]; bhead < &bcache.buckets[0] + BUCKETSSIZE; bhead++) {
+  initlock(&bcache.lock, "bcache");
+  for(bhead = bcache.buckets; bhead < bcache.buckets+BUCKETSSIZE; bhead++) {
     bhead->head.next = &bhead->head;
     bhead->head.prev = &bhead->head;
     initlock(&bhead->lock, "bcache.bucket");
@@ -77,10 +79,8 @@ bget(uint dev, uint blockno)
   struct buckethead *bhead;
   struct bucketnode *bnode;
   struct buf *b;
-  int key;
 
-  key = blockno % BUCKETSSIZE;
-  bhead = &bcache.buckets[key];
+  bhead = &bcache.buckets[idx(blockno)];
 
   acquire(&bhead->lock);
   // Is the block already cached?
@@ -89,40 +89,43 @@ bget(uint dev, uint blockno)
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
       release(&bhead->lock);
-      acquiresleep(&b->lock);
+      acquiresleep(&b->lock); 
       return b;
     }
   }  
   release(&bhead->lock);
-  
+
+  acquire(&bcache.lock);  
+  uint mintimestamp = -1;
   b = 0;
-  bhead = 0;
-  for(struct buckethead * tbhead = &bcache.buckets[0]; tbhead < &bcache.buckets[0]+BUCKETSSIZE; tbhead++) {
-    acquire(&tbhead->lock);
-    int found = 0;
-    for(struct bucketnode *bnode = tbhead->head.next; bnode != &tbhead->head; bnode = bnode->next) {
+  struct buckethead *tbhead = 0;
+  for(struct buckethead *nbhead = bcache.buckets; nbhead < bcache.buckets+BUCKETSSIZE; nbhead++) {
+    acquire(&nbhead->lock);
+    int flag = 0;
+    for(struct bucketnode *bnode = nbhead->head.next; bnode != &nbhead->head; bnode = bnode->next) {
       struct buf *tb = bnode->buf;
-      if(tb->refcnt == 0 && (b == 0 || tb->timestamp < b->timestamp)) {
+      if(tb->refcnt == 0 && (tb->timestamp < mintimestamp)) {
         b = tb;
-        if(!found) {
-          if(bhead) {
-            release(&bhead->lock);
-          }
-          bhead = tbhead;
-          found = 1;
-        }
+        mintimestamp = tb->timestamp;
+        flag = 1;
       }
     }
-    if(!found)
-      release(&tbhead->lock);
+    if(flag) {
+      if(tbhead) release(&tbhead->lock);
+      tbhead = nbhead;
+    } else {
+      release(&nbhead->lock);
+    }
   }
 
   if(b == 0) {
     panic("bget: no buffers");
   }
-  // now holds b bucket lock
-  erase(b);
-  release(&bhead->lock);
+  
+  if(tbhead != bhead) {
+    erase(b);
+    release(&tbhead->lock);
+  }
 
   // now b is free
   b->dev = dev;
@@ -130,10 +133,14 @@ bget(uint dev, uint blockno)
   b->valid = 0;
   b->refcnt = 1;
 
-  bhead = &bcache.buckets[key];
-  acquire(&bhead->lock);
-  insert(b);
+  if(tbhead != bhead) {
+    acquire(&bhead->lock);
+    insert(b);
+  }
+
   release(&bhead->lock);
+  
+  release(&bcache.lock);
   acquiresleep(&b->lock);
   return b;
 }
@@ -169,46 +176,33 @@ brelse(struct buf *b)
   if(!holdingsleep(&b->lock))
     panic("brelse");
   releasesleep(&b->lock);
+
   // 因为在这里mref一定不为0，所以b->blockno一定不会被修改，所以是安全的
-  uint key = b->blockno % BUCKETSSIZE;
-  struct buckethead *bhead;
-  bhead = &bcache.buckets[key];
-  acquire(&bhead->lock);
+  struct buckethead *bhead = &bcache.buckets[idx(b->blockno)];
+  acquire(&bhead->lock);  
+
+  b->refcnt--;
   acquire(&tickslock);
   b->timestamp = ticks;
   release(&tickslock);
-  b->refcnt--;
+  
   release(&bhead->lock);
 }
 
 void
 bpin(struct buf *b) {
-  // 因为在这里mref一定不为0，所以b->blockno一定不会被修改，所以是安全的
-  uint key = b->blockno % BUCKETSSIZE;
-  struct buckethead *bhead;
-  bhead = &bcache.buckets[key];
+  struct buckethead *bhead = &bcache.buckets[idx(b->blockno)];
   acquire(&bhead->lock);
   b->refcnt++;
   release(&bhead->lock);
-
-  // acquire(&bcache.lock);
-  // b->refcnt++;
-  // release(&bcache.lock);
 }
 
 void
 bunpin(struct buf *b) {
-  // 因为在这里mref一定不为0，所以b->blockno一定不会被修改，所以是安全的
-  uint key = b->blockno % BUCKETSSIZE;
-  struct buckethead *bhead;
-  bhead = &bcache.buckets[key];
+  struct buckethead *bhead = &bcache.buckets[idx(b->blockno)];
   acquire(&bhead->lock);
   b->refcnt--;
   release(&bhead->lock);
-
-  // acquire(&bcache.lock);
-  // b->refcnt--;
-  // release(&bcache.lock);
 }
 
 
