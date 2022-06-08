@@ -94,8 +94,27 @@ bget(uint dev, uint blockno)
     }
   }  
   release(&bhead->lock);
+  
+  // 危险区，由于release了bhead->lock，因此在这个窗口可能出现符合要求的buf
 
-  acquire(&bcache.lock);  
+  acquire(&bcache.lock);
+  // 必须再次检查是否有符合要求的buf，另一个CPU可能在上面的窗口期放入了一个符合要求的buf
+  // 如果不检查，而是直接插入新的buf，会导致一个bucket存放了两个相同的buf，会导致freeing free block
+  // 必须保证哈希表中每个buf至多只有一个！
+  acquire(&bhead->lock);
+  for(bnode = bhead->head.next; bnode != &bhead->head; bnode = bnode->next){
+    b = bnode->buf;
+    if(b->dev == dev && b->blockno == blockno){
+      b->refcnt++;
+      release(&bhead->lock);
+      release(&bcache.lock);
+      acquiresleep(&b->lock); 
+      return b;
+    }
+  }  
+  release(&bhead->lock);
+
+  
   uint mintimestamp = -1;
   b = 0;
   struct buckethead *tbhead = 0;
@@ -182,10 +201,11 @@ brelse(struct buf *b)
   acquire(&bhead->lock);  
 
   b->refcnt--;
-  acquire(&tickslock);
-  b->timestamp = ticks;
-  release(&tickslock);
-  
+  if(b->refcnt == 0) {
+    acquire(&tickslock);
+    b->timestamp = ticks;
+    release(&tickslock);
+  }
   release(&bhead->lock);
 }
 
