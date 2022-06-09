@@ -4,13 +4,9 @@
 
 fs
 
-lock
-
 mmap
 
 net
-
-riscv
 
 
 ### 已完成
@@ -28,3 +24,5 @@ lazy
 cow
 
 thread
+
+lock
