@@ -49,7 +49,9 @@
 
 ### 注意事项
 
-make grade有时间限制，如果发现出现qemu-system-riscv64: terminating on signal 15 from pid XXXX (make)，可能是测试超时导致，换台更快的电脑试试吧！（我用云服务器跑总跑不满分，还找了半天虚空bug）
+1. make grade有时间限制，如果发现出现qemu-system-riscv64: terminating on signal 15 from pid XXXX (make)，可能是测试超时导致，换台更快的电脑试试吧！（我用云服务器跑总跑不满分，还找了半天虚空bug）
+
+2. 这个实现还是可能带来一些锁的冲突。可以把桶的数量调大点，应该更容易过。
 
 ### 总结
 
