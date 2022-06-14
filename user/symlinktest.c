@@ -147,7 +147,6 @@ concur(void)
     exit(1);
   }
   close(fd);
-
   for(int j = 0; j < nchild; j++) {
     pid = fork();
     if(pid < 0){
