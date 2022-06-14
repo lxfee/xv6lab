@@ -333,7 +333,6 @@ void
 iput(struct inode *ip)
 {
   acquire(&icache.lock);
-
   if(ip->ref == 1 && ip->valid && ip->nlink == 0){
     // inode has no links and no other references: truncate and free.
 

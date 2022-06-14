@@ -252,8 +252,9 @@ create(char *path, short type, short major, short minor)
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
     ilock(ip);
-    if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
+    if((type == T_FILE || type == T_SYMLINK) && (ip->type == T_FILE || ip->type == T_SYMLINK || ip->type == T_DEVICE)) {
       return ip;
+    }
     iunlockput(ip);
     return 0;
   }
@@ -520,17 +521,13 @@ sys_symlink(void)
     return -1;
   }
   
-  if(writei(ip, 0, (uint64)target, 0, MAXPATH) < 0) {
-    ip->nlink--;
-    iupdate(ip);
-    iunlockput(ip);
-    end_op();
-    return -1;
+  if(writei(ip, 0, (uint64)target, 0, MAXPATH) != MAXPATH) {
+    panic("sys_symlink: writei");
   }
-  
   iupdate(ip);
-  iunlock(ip);
-
+  // 要使用iunlockput，完成创建文件之后，需要iput释放ip->ref。否则无法回收iput
+  iunlockput(ip);
   end_op();
+  
   return 0;
 }
