@@ -5,7 +5,6 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-#include "fcntl.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -28,55 +27,6 @@ void
 trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
-}
-
-uint64
-dealpagefault(uint64 va, uint64 scause) {
-  struct proc *p = myproc();
-  struct vma *vp, *v = 0;
-  for(vp = &p->vma[0]; vp < &p->vma[16]; vp++) {
-    if(vp->valid) {
-      if(va >= vp->addr && va < vp->addr + vp->length) {
-        v = vp;
-        break;
-      }
-    }
-  }
-
-  if(v == 0)
-    return 0;
-  uint64 op = 0;
-  int flags = 0;
-  switch (scause) {
-  case 13: // read ?
-    op |= PROT_READ;
-    break;
-  case 15: // write ?
-    op |= PROT_WRITE;
-    break;
-  default:
-    panic("dealpagefault: unknown page fault");
-  }
-  if(v->prot & PROT_READ) flags |= PTE_R;
-  if(v->prot & PROT_READ) flags |= PTE_W;
-  if((v->prot & op) == 0)
-    return 0;
-  
-  uint64 mem = (uint64)kalloc();
-  if(mem == 0)
-    return 0;
-  uint64 a = PGROUNDDOWN(va);
-  uint offset = a - v->addr + v->offset;
-  struct file *f = v->f;
-  ilock(f->ip);
-  readi(f->ip, 0, mem, offset, PGSIZE);
-  iunlock(f->ip);
-
-  if(mappages(p->pagetable, a, PGSIZE, mem, flags|PTE_U) != 0) {
-    kfree((void* )mem);
-    mem = 0;
-  }
-  return mem;
 }
 
 //

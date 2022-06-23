@@ -1,6 +1,6 @@
 {
     "files.associations": {
-        "random": "c",
-        "fcntl.h": "c"
+        "fcntl.h": "c",
+        "defs.h": "c"
     }
 }
