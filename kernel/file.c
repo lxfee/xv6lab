@@ -209,11 +209,12 @@ dealpagefault(uint64 va, uint64 scause) {
     panic("dealpagefault: unknown page fault");
   }
   if(v->prot & PROT_READ) flags |= PTE_R;
-  if(v->prot & PROT_READ) flags |= PTE_W;
+  if(v->prot & PROT_WRITE) flags |= PTE_W;
   if((v->prot & op) == 0)
     return 0;
   
   uint64 mem = (uint64)kalloc();
+  memset((void*)mem, 0, PGSIZE);
   if(mem == 0)
     return 0;
   uint64 a = PGROUNDDOWN(va);

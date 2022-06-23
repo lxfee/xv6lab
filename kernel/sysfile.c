@@ -498,7 +498,10 @@ sys_mmap(void) {
   if( argaddr(0, &addr) < 0 || argint(1, (int*)&length) < 0 || argint(2, &prot) < 0 || 
       argint(3, &flags) < 0 || argfd(4, 0, &f) < 0 || argint(5, (int*)&offset))
     return -1;
-  
+  if((prot & PROT_READ) && f->readable == 0) 
+    return -1; 
+  if((flags & MAP_PRIVATE) == 0 && (prot & PROT_WRITE) && f->writable == 0)
+    return -1; 
   // find valid vma
   for(vp = &p->vma[0]; vp < &p->vma[16]; vp++) {
     if(!vp->valid) {
@@ -506,7 +509,8 @@ sys_mmap(void) {
       break;
     }
   }
-  if(v == 0) return -1;
+  if(v == 0) 
+    return -1;
   v->f = filedup(f);
   //assume addr is zero
   p->rsz += PGROUNDUP(length);
@@ -521,11 +525,93 @@ sys_mmap(void) {
 }
 
 
-/*
-void *mmap(void *, int, int, int, int, int);
-int munmap(void *, int);
-*/
 uint64
 sys_munmap(void) {
+  uint64 addr = 0;
+  uint length;
+
+  if( argaddr(0, &addr) < 0 || argint(1, (int*)&length) < 0)
+    return -1;
+  
+  struct proc *p = myproc();
+  struct vma *vp, *v = 0;
+  for(vp = &p->vma[0]; vp < &p->vma[16]; vp++) {
+    if(vp->valid) {
+      if((addr >= vp->addr && addr + length <= vp->addr + vp->length) && 
+        !(addr > vp->addr && addr + length < vp->addr + vp->length)) {
+        v = vp;
+        break;
+      }
+    }
+  }
+  if(v == 0) 
+    return -1;
+  if(v->addr == addr) {
+    v->addr += length;
+    v->offset += length;
+  }
+  v->length -= length;
+  if(v->length == 0) {
+    v->valid = 0;
+  }
+
+  uint64 a = PGROUNDDOWN(addr);
+  uint64 ea = PGROUNDUP(addr + length);
+  int npages = 0;
+  for(; a < ea; a += PGSIZE, npages++) {
+    uint64 pa = walkaddr(p->pagetable, a);
+  }
   return 0;
 }
+
+/*
+uint64
+dealpagefault(uint64 va, uint64 scause) {
+  struct proc *p = myproc();
+  struct vma *vp, *v = 0;
+  for(vp = &p->vma[0]; vp < &p->vma[16]; vp++) {
+    if(vp->valid) {
+      if(va >= vp->addr && va < vp->addr + vp->length) {
+        v = vp;
+        break;
+      }
+    }
+  }
+
+  if(v == 0)
+    return 0;
+  uint64 op = 0;
+  int flags = 0;
+  switch (scause) {
+  case 13: // read ?
+    op |= PROT_READ;
+    break;
+  case 15: // write ?
+    op |= PROT_WRITE;
+    break;
+  default:
+    panic("dealpagefault: unknown page fault");
+  }
+  if(v->prot & PROT_READ) flags |= PTE_R;
+  if(v->prot & PROT_WRITE) flags |= PTE_W;
+  if((v->prot & op) == 0)
+    return 0;
+  
+  uint64 mem = (uint64)kalloc();
+  memset((void*)mem, 0, PGSIZE);
+  if(mem == 0)
+    return 0;
+  uint64 a = PGROUNDDOWN(va);
+  uint offset = a - v->addr + v->offset;
+  struct file *f = v->f;
+  ilock(f->ip);
+  readi(f->ip, 0, mem, offset, PGSIZE);
+  iunlock(f->ip);
+
+  if(mappages(p->pagetable, a, PGSIZE, mem, flags|PTE_U) != 0) {
+    kfree((void* )mem);
+    mem = 0;
+  }
+  return mem;
+}
+*/
