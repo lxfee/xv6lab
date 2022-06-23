@@ -490,8 +490,7 @@ sys_pipe(void)
 uint64
 sys_mmap(void) {
   struct proc *p = myproc();
-  struct vma *v = 0;
-  struct vma *vp;
+  struct vma *vp, *v = 0;
   uint64 addr = 0;
   uint length, offset;
   int prot, flags;
@@ -514,6 +513,7 @@ sys_mmap(void) {
   uint64 naddr = MMAPLINE - p->rsz;
   v->addr = naddr;
   v->length = length;
+  v->offset = offset;
   v->prot = prot;
   v->flags = flags;
   v->valid = 1;

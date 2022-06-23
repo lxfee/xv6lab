@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -29,6 +30,55 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+uint64
+dealpagefault(uint64 va, uint64 scause) {
+  struct proc *p = myproc();
+  struct vma *vp, *v = 0;
+  for(vp = &p->vma[0]; vp < &p->vma[16]; vp++) {
+    if(vp->valid) {
+      if(va >= vp->addr && va < vp->addr + vp->length) {
+        v = vp;
+        break;
+      }
+    }
+  }
+
+  if(v == 0)
+    return 0;
+  uint64 op = 0;
+  int flags = 0;
+  switch (scause) {
+  case 13: // read ?
+    op |= PROT_READ;
+    break;
+  case 15: // write ?
+    op |= PROT_WRITE;
+    break;
+  default:
+    panic("dealpagefault: unknown page fault");
+  }
+  if(v->prot & PROT_READ) flags |= PTE_R;
+  if(v->prot & PROT_READ) flags |= PTE_W;
+  if((v->prot & op) == 0)
+    return 0;
+  
+  uint64 mem = (uint64)kalloc();
+  if(mem == 0)
+    return 0;
+  uint64 a = PGROUNDDOWN(va);
+  uint offset = a - v->addr + v->offset;
+  struct file *f = v->f;
+  ilock(f->ip);
+  readi(f->ip, 0, mem, offset, PGSIZE);
+  iunlock(f->ip);
+
+  if(mappages(p->pagetable, a, PGSIZE, mem, flags|PTE_U) != 0) {
+    kfree((void* )mem);
+    mem = 0;
+  }
+  return mem;
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -49,10 +99,9 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
+  uint64 scause = r_scause();
+  if(scause == 8){
     // system call
-
     if(p->killed)
       exit(-1);
 
@@ -67,6 +116,10 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(scause == 13 || scause == 15) {
+    if(dealpagefault(r_stval(), scause) == 0) {
+      p->killed = 1;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());

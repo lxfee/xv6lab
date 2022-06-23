@@ -82,9 +82,10 @@ struct trapframe {
 
 struct vma {
   uint64 addr;
-  int length;
+  uint length;
   int prot;
   int flags;
+  uint offset;
   struct file *f;
   int valid;
 };
