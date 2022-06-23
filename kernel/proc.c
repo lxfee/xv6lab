@@ -283,6 +283,21 @@ fork(void)
   }
   np->sz = p->sz;
 
+  np->rsz = 0;
+  for(int i = 0; i < 16; i++) {
+    struct vma *v = &p->vma[i];  
+    struct vma *nv = &np->vma[i];  
+    if(v->valid) {
+      nv->valid = 1;
+      nv->f = filedup(v->f);
+      nv->flags = v->flags;
+      nv->addr = v->addr;
+      nv->length = v->length;
+      nv->offset = v->offset;
+      nv->prot = v->prot;
+    }
+  }
+
   np->parent = p;
 
   // copy saved user registers.
@@ -344,6 +359,14 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  struct vma *vp;
+  for(vp = &p->vma[0]; vp < &p->vma[16]; vp++) {
+    if(vp->valid) {
+      munmap(vp, vp->addr, vp->length);
+    }
+  }
+
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

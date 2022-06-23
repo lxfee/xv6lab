@@ -181,6 +181,42 @@ filewrite(struct file *f, uint64 addr, int n)
   return ret;
 }
 
+void
+munmap(struct vma* v, uint64 addr, uint length) {
+  struct proc* p = myproc();
+  struct file* f = v->f;
+  uint64 ea = PGROUNDUP(addr + length);
+  int needwb = (v->flags & MAP_SHARED);
+  uint offset = addr - v->addr + v->offset;
+  uint64 a = addr;
+  if(needwb) begin_op();
+  while(a < ea) {
+    uint64 flags = walkflag(p->pagetable, a);
+    if((flags & PTE_V) && (flags & PTE_D)) {
+      if(needwb) {
+        ilock(f->ip);
+        writei(f->ip, 1, a, offset, PGSIZE);
+        iunlock(f->ip);
+      }
+      uvmunmap(p->pagetable, a, 1, 1);
+    }
+    a += PGSIZE;
+    offset += PGSIZE;
+    a = PGROUNDDOWN(a);
+  }
+  if(needwb) end_op(); 
+
+  if(v->addr == addr) {
+    v->addr += length;
+    v->offset += length;
+  }
+  v->length -= length;
+  if(v->length == 0) {
+    fileclose(v->f);
+    v->valid = 0;
+  }
+}
+
 uint64
 dealpagefault(uint64 va, uint64 scause) {
   struct proc *p = myproc();
