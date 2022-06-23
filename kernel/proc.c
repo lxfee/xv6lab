@@ -283,7 +283,7 @@ fork(void)
   }
   np->sz = p->sz;
 
-  np->rsz = 0;
+  np->rsz = p->rsz;
   for(int i = 0; i < 16; i++) {
     struct vma *v = &p->vma[i];  
     struct vma *nv = &np->vma[i];  

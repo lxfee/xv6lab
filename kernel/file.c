@@ -191,14 +191,14 @@ munmap(struct vma* v, uint64 addr, uint length) {
   uint64 a = addr;
   if(needwb) begin_op();
   while(a < ea) {
-    uint64 flags = walkflag(p->pagetable, a);
-    if((flags & PTE_V) && (flags & PTE_D)) {
+    uint64 flags = walkflag(p->pagetable, PGROUNDDOWN(a));
+    if(flags & PTE_V) {
       if(needwb) {
         ilock(f->ip);
         writei(f->ip, 1, a, offset, PGSIZE);
         iunlock(f->ip);
       }
-      uvmunmap(p->pagetable, a, 1, 1);
+      uvmunmap(p->pagetable, PGROUNDDOWN(a), 1, 1);
     }
     a += PGSIZE;
     offset += PGSIZE;

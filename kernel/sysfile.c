@@ -491,7 +491,7 @@ uint64
 sys_mmap(void) {
   struct proc *p = myproc();
   struct vma *vp, *v = 0;
-  uint64 addr = 0;
+  uint64 addr;
   uint length, offset;
   int prot, flags;
   struct file* f;
@@ -527,7 +527,7 @@ sys_mmap(void) {
 
 uint64
 sys_munmap(void) {
-  uint64 addr = 0;
+  uint64 addr;
   uint length;
 
   if( argaddr(0, &addr) < 0 || argint(1, (int*)&length) < 0)
